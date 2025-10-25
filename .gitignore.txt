@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+*.idea/
+
+# Streamlit
+.streamlit/
+
+# System
+.DS_Store
+Thumbs.db
