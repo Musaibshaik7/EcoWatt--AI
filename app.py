@@ -12,9 +12,21 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ------------------ THEME ------------------ #
+# ------------------ SESSION STATE ------------------ #
 if "theme" not in st.session_state:
     st.session_state.theme = "dark"
+if "df" not in st.session_state:
+    st.session_state.df = None
+if "data_ready" not in st.session_state:
+    st.session_state.data_ready = False
+if "latlon" not in st.session_state:
+    st.session_state.latlon = (None, None)
+if "scores" not in st.session_state:
+    st.session_state.scores = {}
+if "summary" not in st.session_state:
+    st.session_state.summary = {}
+
+# ------------------ THEME ------------------ #
 theme = st.session_state.theme
 dark_mode = theme == "dark"
 
@@ -48,14 +60,11 @@ body {{ background-color: {bg_color}; }}
 }}
 .suggestion-card:hover {{ transform: scale(1.02); }}
 .footer {{
-    text-align:center;color:{subtext_color};margin-top:20px;font-size:14px;
+    text-align:center;color:{subtext_color};margin-top:24px;font-size:14px;
 }}
 .footer a {{ color:{text_color}; text-decoration:none; font-weight:bold; }}
-.section-box {{
-    background-color: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 12px;
-    padding: 16px;
+.credits {{
+    margin-top:10px; font-size:13px; color:{subtext_color};
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -65,17 +74,16 @@ st.markdown('<div class="title">⚡ EcoWatt AI</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Intelligent Renewable Energy Optimization Platform</div>', unsafe_allow_html=True)
 st.divider()
 
-# ------------------ SESSION STATE ------------------ #
-if "df" not in st.session_state: st.session_state.df = None
-if "data_ready" not in st.session_state: st.session_state.data_ready = False
-if "latlon" not in st.session_state: st.session_state.latlon = (None, None)
-if "scores" not in st.session_state: st.session_state.scores = {}
-
 # ------------------ SIDEBAR ------------------ #
 with st.sidebar:
     st.header("⚙️ Controls")
     theme_choice = st.radio("Theme", ["Dark", "Light"], horizontal=True, index=0 if dark_mode else 1)
     st.session_state.theme = "dark" if theme_choice == "Dark" else "light"
+    # Recompute theme vars after toggle
+    dark_mode = st.session_state.theme == "dark"
+    bg_color = "#0b1a1f" if dark_mode else "#f6fbff"
+    text_color = "#e6f6f1" if dark_mode else "#1b1b1b"
+    subtext_color = "#bcded2" if dark_mode else "#385e6a"
 
     city = st.selectbox("City:", ["Select city...", "Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad", "Kolkata", "Custom"])
     coords = {
@@ -110,9 +118,10 @@ with st.sidebar:
     solar_om_inr_per_kwh = st.slider("Solar O&M cost (₹/kWh)", 0.0, 2.0, 0.3)
     wind_om_inr_per_kwh = st.slider("Wind O&M cost (₹/kWh)", 0.0, 2.0, 0.5)
 
-# ------------------ CHART OPTIONS ------------------ #
-available_tabs = ["Solar", "Wind", "Temperature", "Battery", "Cost", "Map"]
-chart_options = st.multiselect("Select charts:", available_tabs, default=available_tabs)
+    st.markdown("---")
+    st.subheader("Charts")
+    available_tabs = ["Solar", "Wind", "Temperature", "Battery", "Cost", "Map"]
+    chart_options = st.multiselect("Select charts:", available_tabs, default=available_tabs)
 
 # ------------------ FETCH DATA (CACHED) ------------------ #
 @st.cache_data(show_spinner=False)
@@ -163,7 +172,7 @@ if analyze_clicked and not disabled_analyze:
     df["solar_scale"] = (df["solar_kwh_m2"]/avg_solar).fillna(1.0) if avg_solar > 0 else 1.0
     df["wind_scale"] = (df["wind_m_s_avg"]/avg_wind).fillna(1.0) if avg_wind > 0 else 1.0
 
-    # ------------------ BATTERY SIMULATION (SAFEGUARDED) ------------------ #
+    # Battery simulation (safeguarded)
     df["solar_gen_kwh"] = df["solar_kwh_m2"] * system_size_kw * pr
     df["wind_gen_kwh"] = df["wind_m_s_avg"] * turbine_kw * 24 * 0.4
     df["total_gen_kwh"] = df["solar_gen_kwh"] + df["wind_gen_kwh"]
@@ -198,19 +207,17 @@ if analyze_clicked and not disabled_analyze:
     df["grid_kwh"] = grid_use
     df["served_from_battery_kwh"] = served_from_battery
 
-    # ------------------ COST & ECO-WATT ------------------ #
+    # Costs & scores
     df["solar_cost"] = df["solar_gen_kwh"] * solar_om_inr_per_kwh
     df["wind_cost"] = df["wind_gen_kwh"] * wind_om_inr_per_kwh
     df["grid_cost"] = df["grid_kwh"] * tariff_inr_per_kwh
     df["total_cost"] = df["solar_cost"] + df["wind_cost"] + df["grid_cost"]
 
-    # Simple normalized scores
     solar_score = min((avg_solar/300) * 100, 100) if avg_solar >= 0 else 0
     wind_score = min((avg_wind/10) * 100, 100) if avg_wind >= 0 else 0
     battery_score = min((battery_capacity_kwh/20) * 100, 100)
     eco_score = (solar_score*0.4 + wind_score*0.3 + battery_score*0.3)
 
-    # Summary KPIs
     total_gen = df["total_gen_kwh"].sum()
     total_load = daily_load_kwh * len(df)
     grid_fraction = (df["grid_kwh"].sum() / total_load) * 100 if total_load > 0 else 0
@@ -233,7 +240,7 @@ if analyze_clicked and not disabled_analyze:
         "Total cost (₹)": df["total_cost"].sum()
     }
 
-# ------------------ DISPLAY ------------------ #
+# ------------------ CHART STYLING HELPERS ------------------ #
 def add_watermark(fig):
     fig.update_layout(annotations=[dict(
         text="EcoWatt AI", x=1.0, y=-0.15, xref="paper", yref="paper",
@@ -241,49 +248,65 @@ def add_watermark(fig):
         xanchor="right", yanchor="top")])
     return fig
 
+def style_fig(fig, dark_mode):
+    axis_color = "#e6f6f1" if dark_mode else "#1b1b1b"
+    grid_color = "rgba(255,255,255,0.12)" if dark_mode else "rgba(0,0,0,0.12)"
+    fig.update_layout(
+        plot_bgcolor=bg_color,
+        paper_bgcolor=bg_color,
+        font=dict(color=axis_color),
+        xaxis=dict(color=axis_color, gridcolor=grid_color),
+        yaxis=dict(color=axis_color, gridcolor=grid_color)
+    )
+    return add_watermark(fig)
+
+# ------------------ DISPLAY ------------------ #
 if st.session_state.data_ready:
     df = st.session_state.df
     left, right = st.columns([2, 1])
 
-    # LEFT: Charts (dynamic tabs)
+    # LEFT: Charts
     with left:
         lat, lon = st.session_state.latlon
         st.subheader(f"📈 Forecast for coordinates: {lat:.4f}, {lon:.4f}")
 
-        # Build tabs dynamically based on selected chart_options
         tabs = st.tabs(chart_options)
-
-        # Map selected tab names to indices for clean rendering
         tab_index = {name: i for i, name in enumerate(chart_options)}
 
         if "Solar" in chart_options:
             with tabs[tab_index["Solar"]]:
-                fig = px.line(df, x="date", y="solar_mj_m2", title="☀️ Daily Solar (MJ/m²)",
+                fig = px.line(df, x="date", y="solar_mj_m2",
+                              title="☀️ Daily Solar (MJ/m²)",
                               color_discrete_sequence=["#00ffb3"])
-                fig.update_layout(plot_bgcolor=bg_color, paper_bgcolor=bg_color, font_color=text_color)
-                st.plotly_chart(add_watermark(fig), use_container_width=True)
+                st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
 
         if "Wind" in chart_options:
             with tabs[tab_index["Wind"]]:
-                fig = px.line(df, x="date", y="wind_m_s_avg", title="🌬️ Wind Speed (m/s)",
+                fig = px.line(df, x="date", y="wind_m_s_avg",
+                              title="🌬️ Wind Speed (m/s)",
                               color_discrete_sequence=["#00d4ff"])
-                fig.update_layout(plot_bgcolor=bg_color, paper_bgcolor=bg_color, font_color=text_color)
-                st.plotly_chart(add_watermark(fig), use_container_width=True)
+                st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
 
         if "Temperature" in chart_options:
             with tabs[tab_index["Temperature"]]:
-                fig = px.line(df, x="date", y="temp_max_c", title="🌡️ Max Temperature (°C)",
+                fig = px.line(df, x="date", y="temp_max_c",
+                              title="🌡️ Max Temperature (°C)",
                               color_discrete_sequence=["#ffaa00"])
-                fig.update_layout(plot_bgcolor=bg_color, paper_bgcolor=bg_color, font_color=text_color)
-                st.plotly_chart(add_watermark(fig), use_container_width=True)
+                st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
 
         if "Battery" in chart_options:
             with tabs[tab_index["Battery"]]:
-                st.line_chart(df[["battery_kwh", "grid_kwh", "served_from_battery_kwh"]], use_container_width=True)
+                fig = px.line(df, x="date",
+                              y=["battery_kwh", "grid_kwh", "served_from_battery_kwh"],
+                              title="🔋 Battery & Grid Usage (kWh)")
+                st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
 
         if "Cost" in chart_options:
             with tabs[tab_index["Cost"]]:
-                st.line_chart(df[["solar_cost", "wind_cost", "grid_cost", "total_cost"]], use_container_width=True)
+                fig = px.line(df, x="date",
+                              y=["solar_cost", "wind_cost", "grid_cost", "total_cost"],
+                              title="💰 Energy Costs (₹)")
+                st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
 
         if "Map" in chart_options:
             with tabs[tab_index["Map"]]:
@@ -311,34 +334,30 @@ if st.session_state.data_ready:
 
         st.subheader("💡 Suggestions")
         suggestions = []
-        # Solar
         if st.session_state.scores.get("Solar", 0) < 50:
             suggestions.append("Increase solar panel area or use higher-efficiency modules (boost PR).")
-        # Wind
         if st.session_state.scores.get("Wind", 0) < 50:
             suggestions.append("Consider higher capacity turbines or check siting for better wind resource.")
-        # Battery
         if st.session_state.scores.get("Battery", 0) < 50:
             suggestions.append("Upgrade battery capacity or round-trip efficiency for improved storage.")
-        # EcoWatt
         if st.session_state.scores.get("EcoWatt", 0) > 80:
             suggestions.append("Excellent setup! You’re nearing optimal hybrid performance—keep fine-tuning.")
-
-        # Self-sufficiency
         if st.session_state.scores.get("Self-sufficiency (%)", 0) < 60:
             suggestions.append("Reduce grid dependence with demand shifting or incremental capacity increases.")
-
         if len(suggestions) == 0:
             suggestions.append("System looks balanced—monitor seasonal trends and maintenance for sustained gains.")
 
         for s in suggestions:
             st.markdown(f'<div class="suggestion-card">{s}</div>', unsafe_allow_html=True)
 
-# ------------------ FOOTER ------------------ #
+# ------------------ FOOTER & CREDITS ------------------ #
 st.markdown(f"""
 <div class="footer">
 Made with ❤️ by <b>Musaib Shaik</b> |
 <a href="https://github.com/Musaibshaik7" target="_blank">GitHub</a> |
 <a href="https://www.linkedin.com/in/musaibshaik7/" target="_blank">LinkedIn</a>
+<div class="credits">
+Data: Open-Meteo API | Charts: Plotly & Streamlit | Build: Python & Streamlit
+</div>
 </div>
 """, unsafe_allow_html=True)
