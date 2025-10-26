@@ -417,9 +417,13 @@ body {{ background-color: {bg_color}; }}
 .kpi-title {{ font-size:14px;color:{subtext_color};margin-bottom:8px; }}
 .kpi-value {{ font-size:24px;font-weight:700; }}
 .suggestion-card {{
-    padding:15px;border-radius:12px;margin-bottom:10px;
-    background-color:rgba(255,255,255,0.1);color:{text_color};
-    font-weight:bold;transition: transform 0.3s;
+    padding:15px;
+    border-radius:12px;
+    margin-bottom:10px;
+    background-color: {'rgba(0,0,0,0.08)' if not dark_mode else 'rgba(255,255,255,0.1)'};
+    color:{text_color};
+    font-weight:bold;
+    transition: transform 0.3s;
 }}
 .suggestion-card:hover {{ transform: scale(1.02); }}
 .footer {{
@@ -480,15 +484,15 @@ with st.sidebar:
     solar_om_inr_per_kwh = st.slider("Solar O&M cost (₹/kWh)", 0.0, 2.0, 0.3)
     wind_om_inr_per_kwh = st.slider("Wind O&M cost (₹/kWh)", 0.0, 2.0, 0.5)
 
-# ------------------ CHART SELECTOR (always visible, stable) ------------------ #
+# ------------------ CHART SELECTOR ------------------ #
 selector_left, selector_mid, selector_right = st.columns([1, 2, 1])
 with selector_mid:
     st.subheader("📊 Chart selection")
     st.multiselect(
         "Select charts:",
         AVAILABLE_TABS,
-        default=AVAILABLE_TABS,  # initial default
-        key="chart_options"      # Streamlit manages state
+        default=AVAILABLE_TABS,
+        key="chart_options"
     )
 chart_tabs = st.session_state.chart_options if st.session_state.chart_options else []
 
@@ -529,8 +533,7 @@ if analyze_clicked and not disabled_analyze:
         "solar_mj_m2": daily.get("shortwave_radiation_sum", [0]*len(daily["time"])),
         "wind_m_s_max": daily.get("wind_speed_10m_max", [0]*len(daily["time"])),
         "temp_max_c": daily.get("temperature_2m_max", [None]*len(daily["time"]))
-    })
-    df = df.sort_values("date").tail(horizon_days).reset_index(drop=True)
+    }).sort_values("date").tail(horizon_days).reset_index(drop=True)
 
     # Derived metrics
     df["solar_kwh_m2"] = df["solar_mj_m2"] * 0.2778
@@ -616,8 +619,8 @@ def style_fig(fig):
         plot_bgcolor=bg_color,
         paper_bgcolor=bg_color,
         font=dict(color=axis_color),
-        xaxis=dict(color=axis_color, gridcolor=grid_color, title_font=dict(color=axis_color), tickfont=dict(color=axis_color)),
-        yaxis=dict(color=axis_color, gridcolor=grid_color, title_font=dict(color=axis_color), tickfont=dict(color=axis_color)),
+        xaxis=dict(color=axis_color, gridcolor=grid_color),
+        yaxis=dict(color=axis_color, gridcolor=grid_color),
         margin=dict(l=40, r=40, t=60, b=40)
     )
     return add_watermark(fig)
@@ -706,7 +709,7 @@ if st.session_state.data_ready:
         for s in suggestions:
             st.markdown(f'<div class="suggestion-card">{s}</div>', unsafe_allow_html=True)
 
-# ------------------ FOOTER & CREDITS ------------------ #
+# ------------------ FOOTER ------------------ #
 st.markdown(f"""
 <div class="footer">
 Made with ❤️ by <b>Musaib Shaik</b> |
