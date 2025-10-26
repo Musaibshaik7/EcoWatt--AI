@@ -484,7 +484,7 @@ with st.sidebar:
     solar_om_inr_per_kwh = st.slider("Solar O&M cost (₹/kWh)", 0.0, 2.0, 0.3)
     wind_om_inr_per_kwh = st.slider("Wind O&M cost (₹/kWh)", 0.0, 2.0, 0.5)
 
-# ------------------ CHART SELECTOR ------------------ #
+# ------------------ CHART SELECTOR (center) ------------------ #
 selector_left, selector_mid, selector_right = st.columns([1, 2, 1])
 with selector_mid:
     st.subheader("📊 Chart selection")
@@ -552,14 +552,21 @@ if analyze_clicked and not disabled_analyze:
     served_from_battery = []
     for gen in df["total_gen_kwh"]:
         load = float(daily_load_kwh)
+
+        # Charge with excess
         excess = max(gen - load, 0.0)
         battery = min(battery + excess * battery_round_trip_eff, float(battery_capacity_kwh))
+
+        # Discharge for deficit
         remaining_load = max(load - gen, 0.0)
         discharge = min(battery, remaining_load)
         battery -= discharge
         served_from_battery.append(discharge)
+
+        # Grid for remaining deficit
         shortage = max(remaining_load - discharge, 0.0)
         grid_use.append(shortage)
+
         battery = max(battery, 0.0)
         battery_state.append(battery)
 
@@ -610,6 +617,7 @@ def add_watermark(fig):
     return fig
 
 def style_fig(fig):
+    # Safe, theme-aware axis/legend styling to avoid ValueError
     if dark_mode:
         axis_color = "#e6f6f1"
         grid_color = "rgba(255,255,255,0.12)"
@@ -623,23 +631,24 @@ def style_fig(fig):
         plot_bgcolor=bg_color,
         paper_bgcolor=bg_color,
         font=dict(color=axis_color),
-        xaxis=dict(
-            color=axis_color,
-            gridcolor=grid_color,
-            tickfont=dict(color=axis_color),
-            titlefont=dict(color=axis_color)
-        ),
-        yaxis=dict(
-            color=axis_color,
-            gridcolor=grid_color,
-            tickfont=dict(color=axis_color),
-            titlefont=dict(color=axis_color)
-        ),
+        margin=dict(l=40, r=40, t=60, b=40),
         legend=dict(
             font=dict(color=axis_color),
             bgcolor=legend_bg
-        ),
-        margin=dict(l=40, r=40, t=60, b=40)
+        )
+    )
+    # Axes updated separately to avoid invalid keys in layout
+    fig.update_xaxes(
+        color=axis_color,
+        gridcolor=grid_color,
+        tickfont=dict(color=axis_color),
+        titlefont=dict(color=axis_color)
+    )
+    fig.update_yaxes(
+        color=axis_color,
+        gridcolor=grid_color,
+        tickfont=dict(color=axis_color),
+        titlefont=dict(color=axis_color)
     )
     return add_watermark(fig)
 
@@ -684,8 +693,10 @@ if st.session_state.data_ready:
                     elif name == "Cost":
                         y_cols = ["solar_cost", "wind_cost", "grid_cost", "total_cost"]; title = "💰 Energy Costs (₹)"
 
-                    fig = px.line(df, x="date", y=y_cols, title=title,
-                                  color_discrete_sequence=[get_line_color(name)]*len(y_cols))
+                    fig = px.line(
+                        df, x="date", y=y_cols, title=title,
+                        color_discrete_sequence=[get_line_color(name)] * len(y_cols)
+                    )
                     st.plotly_chart(style_fig(fig), use_container_width=True)
 
             if "Map" in chart_tabs:
