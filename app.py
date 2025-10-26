@@ -379,6 +379,8 @@ if "scores" not in st.session_state:
     st.session_state.scores = {}
 if "summary" not in st.session_state:
     st.session_state.summary = {}
+if "chart_options" not in st.session_state:
+    st.session_state.chart_options = ["Solar", "Wind", "Temperature", "Battery", "Cost", "Map"]
 
 AVAILABLE_TABS = ["Solar", "Wind", "Temperature", "Battery", "Cost", "Map"]
 
@@ -524,6 +526,7 @@ if analyze_clicked and not disabled_analyze:
     })
     df = df.sort_values("date").tail(horizon_days).reset_index(drop=True)
 
+    # Derived metrics
     df["solar_kwh_m2"] = df["solar_mj_m2"] * 0.2778
     df["wind_m_s_avg"] = df["wind_m_s_max"] * 0.6
 
@@ -532,6 +535,7 @@ if analyze_clicked and not disabled_analyze:
     df["solar_scale"] = (df["solar_kwh_m2"]/avg_solar).fillna(1.0) if avg_solar > 0 else 1.0
     df["wind_scale"] = (df["wind_m_s_avg"]/avg_wind).fillna(1.0) if avg_wind > 0 else 1.0
 
+    # Battery & generation
     df["solar_gen_kwh"] = df["solar_kwh_m2"] * system_size_kw * pr
     df["wind_gen_kwh"] = df["wind_m_s_avg"] * turbine_kw * 24 * 0.4
     df["total_gen_kwh"] = df["solar_gen_kwh"] + df["wind_gen_kwh"]
@@ -542,14 +546,18 @@ if analyze_clicked and not disabled_analyze:
     served_from_battery = []
     for gen in df["total_gen_kwh"]:
         load = float(daily_load_kwh)
+        # charge with excess
         excess = max(gen - load, 0.0)
         battery = min(battery + excess * battery_round_trip_eff, float(battery_capacity_kwh))
+        # discharge for deficit
         remaining_load = max(load - gen, 0.0)
         discharge = min(battery, remaining_load)
         battery -= discharge
         served_from_battery.append(discharge)
+        # grid use for remaining deficit
         shortage = max(remaining_load - discharge, 0.0)
         grid_use.append(shortage)
+        # safeguard
         battery = max(battery, 0.0)
         battery_state.append(battery)
 
@@ -557,6 +565,7 @@ if analyze_clicked and not disabled_analyze:
     df["grid_kwh"] = grid_use
     df["served_from_battery_kwh"] = served_from_battery
 
+    # Costs & scores
     df["solar_cost"] = df["solar_gen_kwh"] * solar_om_inr_per_kwh
     df["wind_cost"] = df["wind_gen_kwh"] * wind_om_inr_per_kwh
     df["grid_cost"] = df["grid_kwh"] * tariff_inr_per_kwh
@@ -598,25 +607,27 @@ def add_watermark(fig):
         xanchor="right", yanchor="top")])
     return fig
 
-def style_fig(fig):
-    axis_color = "#e6f6f1" if dark_mode else "#1b1b1b"
-    grid_color = "rgba(255,255,255,0.12)" if dark_mode else "rgba(0,0,0,0.12)"
-    fig.update_layout(
-        plot_bgcolor=bg_color,
-        paper_bgcolor=bg_color,
-        font=dict(color=axis_color),
-        xaxis=dict(color=axis_color, gridcolor=grid_color),
-        yaxis=dict(color=axis_color, gridcolor=grid_color),
-        margin=dict(l=40, r=40, t=60, b=40)
-    )
-    return add_watermark(fig)
-
 def get_line_color(name):
     if dark_mode:
         colors = {"Solar": "#00ffb3", "Wind": "#00d4ff", "Temperature": "#ffaa00", "Battery": "#00bfff", "Cost": "#ff6f00"}
     else:
         colors = {"Solar": "#007f4d", "Wind": "#005fa3", "Temperature": "#cc7000", "Battery": "#007fbf", "Cost": "#b35900"}
     return colors.get(name, "#00ffb3")
+
+def style_fig(fig):
+    axis_color = "#e6f6f1" if dark_mode else "#1b1b1b"
+    grid_color = "rgba(255,255,255,0.12)" if dark_mode else "rgba(0,0,0,0.12)"
+    legend_color = "#e6f6f1" if dark_mode else "#1b1b1b"
+    fig.update_layout(
+        plot_bgcolor=bg_color,
+        paper_bgcolor=bg_color,
+        font=dict(color=axis_color),
+        xaxis=dict(color=axis_color, gridcolor=grid_color),
+        yaxis=dict(color=axis_color, gridcolor=grid_color),
+        legend=dict(font=dict(color=legend_color)),
+        margin=dict(l=40, r=40, t=60, b=40)
+    )
+    return add_watermark(fig)
 
 # ------------------ DISPLAY ------------------ #
 if st.session_state.data_ready:
