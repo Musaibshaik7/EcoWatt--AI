@@ -171,7 +171,7 @@ if analyze_clicked and not disabled_analyze:
     df["solar_scale"] = (df["solar_kwh_m2"]/avg_solar).fillna(1.0) if avg_solar > 0 else 1.0
     df["wind_scale"] = (df["wind_m_s_avg"]/avg_wind).fillna(1.0) if avg_wind > 0 else 1.0
 
-    # Battery simulation
+    # Battery & generation
     df["solar_gen_kwh"] = df["solar_kwh_m2"] * system_size_kw * pr
     df["wind_gen_kwh"] = df["wind_m_s_avg"] * turbine_kw * 24 * 0.4
     df["total_gen_kwh"] = df["solar_gen_kwh"] + df["wind_gen_kwh"]
@@ -230,7 +230,7 @@ if analyze_clicked and not disabled_analyze:
         "Total cost (₹)": df["total_cost"].sum()
     }
 
-# ------------------ CHART STYLING HELPERS ------------------ #
+# ------------------ CHART HELPERS ------------------ #
 def add_watermark(fig):
     color = "rgba(255,255,255,0.15)" if dark_mode else "rgba(0,0,0,0.15)"
     fig.update_layout(annotations=[dict(
@@ -239,7 +239,7 @@ def add_watermark(fig):
         xanchor="right", yanchor="top")])
     return fig
 
-def style_fig(fig, dark_mode):
+def style_fig(fig):
     axis_color = "#e6f6f1" if dark_mode else "#1b1b1b"
     grid_color = "rgba(255,255,255,0.12)" if dark_mode else "rgba(0,0,0,0.12)"
     fig.update_layout(
@@ -255,8 +255,9 @@ def style_fig(fig, dark_mode):
 # ------------------ DISPLAY ------------------ #
 if st.session_state.data_ready:
     df = st.session_state.df
-
     st.subheader(f"📈 Forecast for coordinates: {st.session_state.latlon[0]:.4f}, {st.session_state.latlon[1]:.4f}")
+
+    # Tabs in center
     tabs = st.tabs(chart_options)
     tab_index = {name: i for i, name in enumerate(chart_options)}
 
@@ -291,7 +292,7 @@ if st.session_state.data_ready:
                 title = "💰 Energy Costs (₹)"
             fig = px.line(df, x="date", y=y_cols, title=title,
                           color_discrete_sequence=[get_line_color(name)]*len(y_cols))
-            st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
+            st.plotly_chart(style_fig(fig), use_container_width=True)
 
     if "Map" in chart_options:
         with tabs[tab_index["Map"]]:
@@ -334,7 +335,7 @@ if st.session_state.data_ready:
         st.write("Summary:")
         st.json(st.session_state.summary)
 
-# ------------------ FOOTER & CREDITS ------------------ #
+# ------------------ FOOTER ------------------ #
 st.markdown(f"""
 <div class="footer">
 Made with ❤️ by <b>Musaib Shaik</b> |
