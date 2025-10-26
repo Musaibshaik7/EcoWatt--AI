@@ -386,9 +386,8 @@ if "scores" not in st.session_state:
     st.session_state.scores = {}
 if "summary" not in st.session_state:
     st.session_state.summary = {}
-if "chart_options" not in st.session_state:
-    st.session_state.chart_options = ["Solar", "Wind", "Temperature", "Battery", "Cost", "Map"]
 
+# Persistent available tabs
 AVAILABLE_TABS = ["Solar", "Wind", "Temperature", "Battery", "Cost", "Map"]
 
 # ------------------ THEME ------------------ #
@@ -481,15 +480,15 @@ with st.sidebar:
     solar_om_inr_per_kwh = st.slider("Solar O&M cost (₹/kWh)", 0.0, 2.0, 0.3)
     wind_om_inr_per_kwh = st.slider("Wind O&M cost (₹/kWh)", 0.0, 2.0, 0.5)
 
-# ------------------ CHART SELECTOR ------------------ #
+# ------------------ CHART SELECTOR (always visible, stable) ------------------ #
 selector_left, selector_mid, selector_right = st.columns([1, 2, 1])
 with selector_mid:
     st.subheader("📊 Chart selection")
     st.multiselect(
         "Select charts:",
         AVAILABLE_TABS,
-        default=AVAILABLE_TABS,
-        key="chart_options"
+        default=AVAILABLE_TABS,  # initial default
+        key="chart_options"      # Streamlit manages state
     )
 chart_tabs = st.session_state.chart_options if st.session_state.chart_options else []
 
@@ -525,17 +524,18 @@ if analyze_clicked and not disabled_analyze:
         st.error("No daily data returned. Try another location.")
         st.stop()
 
-    today = pd.Timestamp.today().normalize()
     df = pd.DataFrame({
-        "date": pd.date_range(today, periods=horizon_days),
-        "solar_mj_m2": daily.get("shortwave_radiation_sum", [0]*horizon_days),
-        "wind_m_s_max": daily.get("wind_speed_10m_max", [0]*horizon_days),
-        "temp_max_c": daily.get("temperature_2m_max", [None]*horizon_days)
+        "date": pd.to_datetime(daily["time"]),
+        "solar_mj_m2": daily.get("shortwave_radiation_sum", [0]*len(daily["time"])),
+        "wind_m_s_max": daily.get("wind_speed_10m_max", [0]*len(daily["time"])),
+        "temp_max_c": daily.get("temperature_2m_max", [None]*len(daily["time"]))
     })
+    df = df.sort_values("date").tail(horizon_days).reset_index(drop=True)
 
     # Derived metrics
     df["solar_kwh_m2"] = df["solar_mj_m2"] * 0.2778
     df["wind_m_s_avg"] = df["wind_m_s_max"] * 0.6
+
     avg_solar = df["solar_kwh_m2"].mean()
     avg_wind = df["wind_m_s_avg"].mean()
     df["solar_scale"] = (df["solar_kwh_m2"]/avg_solar).fillna(1.0) if avg_solar > 0 else 1.0
@@ -547,7 +547,9 @@ if analyze_clicked and not disabled_analyze:
     df["total_gen_kwh"] = df["solar_gen_kwh"] + df["wind_gen_kwh"]
 
     battery = float(battery_capacity_kwh)
-    battery_state, grid_use, served_from_battery = [], [], []
+    battery_state = []
+    grid_use = []
+    served_from_battery = []
     for gen in df["total_gen_kwh"]:
         load = float(daily_load_kwh)
         excess = max(gen - load, 0.0)
@@ -614,8 +616,8 @@ def style_fig(fig):
         plot_bgcolor=bg_color,
         paper_bgcolor=bg_color,
         font=dict(color=axis_color),
-        xaxis=dict(color=axis_color, gridcolor=grid_color),
-        yaxis=dict(color=axis_color, gridcolor=grid_color),
+        xaxis=dict(color=axis_color, gridcolor=grid_color, title_font=dict(color=axis_color), tickfont=dict(color=axis_color)),
+        yaxis=dict(color=axis_color, gridcolor=grid_color, title_font=dict(color=axis_color), tickfont=dict(color=axis_color)),
         margin=dict(l=40, r=40, t=60, b=40)
     )
     return add_watermark(fig)
@@ -633,7 +635,8 @@ def get_line_color(name):
 # ------------------ DISPLAY ------------------ #
 if st.session_state.data_ready:
     df = st.session_state.df
-    left, right = st.columns([3,1])
+
+    left, right = st.columns([3, 1])
 
     with left:
         lat, lon = st.session_state.latlon
@@ -655,9 +658,9 @@ if st.session_state.data_ready:
                     elif name == "Temperature":
                         y_cols = ["temp_max_c"]; title = "🌡️ Max Temperature (°C)"
                     elif name == "Battery":
-                        y_cols = ["battery_kwh","grid_kwh","served_from_battery_kwh"]; title="🔋 Battery & Grid Usage (kWh)"
+                        y_cols = ["battery_kwh", "grid_kwh", "served_from_battery_kwh"]; title = "🔋 Battery & Grid Usage (kWh)"
                     elif name == "Cost":
-                        y_cols = ["solar_cost","wind_cost","grid_cost","total_cost"]; title="💰 Energy Costs (₹)"
+                        y_cols = ["solar_cost", "wind_cost", "grid_cost", "total_cost"]; title = "💰 Energy Costs (₹)"
 
                     fig = px.line(df, x="date", y=y_cols, title=title,
                                   color_discrete_sequence=[get_line_color(name)]*len(y_cols))
@@ -666,7 +669,7 @@ if st.session_state.data_ready:
             if "Map" in chart_tabs:
                 with tabs[tab_index["Map"]]:
                     if None not in (lat, lon):
-                        st.map(pd.DataFrame({"lat":[lat],"lon":[lon]}))
+                        st.map(pd.DataFrame({"lat": [lat], "lon": [lon]}))
                     else:
                         st.info("No valid coordinates to display on map.")
 
@@ -686,17 +689,24 @@ if st.session_state.data_ready:
             )
 
         st.subheader("💡 Suggestions")
-        suggestions=[]
-        if st.session_state.scores.get("Solar",0)<50: suggestions.append("Increase solar panel area or use higher-efficiency modules (boost PR).")
-        if st.session_state.scores.get("Wind",0)<50: suggestions.append("Consider higher capacity turbines or check siting for better wind resource.")
-        if st.session_state.scores.get("Battery",0)<50: suggestions.append("Upgrade battery capacity or round-trip efficiency for improved storage.")
-        if st.session_state.scores.get("EcoWatt",0)>80: suggestions.append("Excellent setup! You’re nearing optimal hybrid performance—keep fine-tuning.")
-        if st.session_state.scores.get("Self-sufficiency (%)",0)<60: suggestions.append("Reduce grid dependence with demand shifting or incremental capacity increases.")
-        if len(suggestions)==0: suggestions.append("System looks balanced—monitor seasonal trends and maintenance for sustained gains.")
-        for s in suggestions:
-            st.markdown(f'<div class="suggestion-card">{s}</div>',unsafe_allow_html=True)
+        suggestions = []
+        if st.session_state.scores.get("Solar", 0) < 50:
+            suggestions.append("Increase solar panel area or use higher-efficiency modules (boost PR).")
+        if st.session_state.scores.get("Wind", 0) < 50:
+            suggestions.append("Consider higher capacity turbines or check siting for better wind resource.")
+        if st.session_state.scores.get("Battery", 0) < 50:
+            suggestions.append("Upgrade battery capacity or round-trip efficiency for improved storage.")
+        if st.session_state.scores.get("EcoWatt", 0) > 80:
+            suggestions.append("Excellent setup! You’re nearing optimal hybrid performance—keep fine-tuning.")
+        if st.session_state.scores.get("Self-sufficiency (%)", 0) < 60:
+            suggestions.append("Reduce grid dependence with demand shifting or incremental capacity increases.")
+        if len(suggestions) == 0:
+            suggestions.append("System looks balanced—monitor seasonal trends and maintenance for sustained gains.")
 
-# ------------------ FOOTER ------------------ #
+        for s in suggestions:
+            st.markdown(f'<div class="suggestion-card">{s}</div>', unsafe_allow_html=True)
+
+# ------------------ FOOTER & CREDITS ------------------ #
 st.markdown(f"""
 <div class="footer">
 Made with ❤️ by <b>Musaib Shaik</b> |
