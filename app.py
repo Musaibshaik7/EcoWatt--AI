@@ -79,7 +79,6 @@ with st.sidebar:
     st.header("⚙️ Controls")
     theme_choice = st.radio("Theme", ["Dark", "Light"], horizontal=True, index=0 if dark_mode else 1)
     st.session_state.theme = "dark" if theme_choice == "Dark" else "light"
-    # Recompute theme vars after toggle
     dark_mode = st.session_state.theme == "dark"
     bg_color = "#0b1a1f" if dark_mode else "#f6fbff"
     text_color = "#e6f6f1" if dark_mode else "#1b1b1b"
@@ -123,7 +122,7 @@ with st.sidebar:
     available_tabs = ["Solar", "Wind", "Temperature", "Battery", "Cost", "Map"]
     chart_options = st.multiselect("Select charts:", available_tabs, default=available_tabs)
 
-# ------------------ FETCH DATA (CACHED) ------------------ #
+# ------------------ FETCH DATA ------------------ #
 @st.cache_data(show_spinner=False)
 def fetch_data(lat, lon):
     url = "https://api.open-meteo.com/v1/forecast"
@@ -172,7 +171,7 @@ if analyze_clicked and not disabled_analyze:
     df["solar_scale"] = (df["solar_kwh_m2"]/avg_solar).fillna(1.0) if avg_solar > 0 else 1.0
     df["wind_scale"] = (df["wind_m_s_avg"]/avg_wind).fillna(1.0) if avg_wind > 0 else 1.0
 
-    # Battery simulation (safeguarded)
+    # Battery simulation
     df["solar_gen_kwh"] = df["solar_kwh_m2"] * system_size_kw * pr
     df["wind_gen_kwh"] = df["wind_m_s_avg"] * turbine_kw * 24 * 0.4
     df["total_gen_kwh"] = df["solar_gen_kwh"] + df["wind_gen_kwh"]
@@ -183,24 +182,15 @@ if analyze_clicked and not disabled_analyze:
     served_from_battery = []
     for gen in df["total_gen_kwh"]:
         load = float(daily_load_kwh)
-
-        # Charge with excess generation
         excess = max(gen - load, 0.0)
         battery = min(battery + excess * battery_round_trip_eff, float(battery_capacity_kwh))
-
-        # Discharge to meet remaining load if needed
         remaining_load = max(load - gen, 0.0)
         discharge = min(battery, remaining_load)
         battery -= discharge
         served_from_battery.append(discharge)
-
-        # Any unmet load is taken from the grid
         shortage = max(remaining_load - discharge, 0.0)
         grid_use.append(shortage)
-
-        # Safeguard: never negative
         battery = max(battery, 0.0)
-
         battery_state.append(battery)
 
     df["battery_kwh"] = battery_state
@@ -242,9 +232,10 @@ if analyze_clicked and not disabled_analyze:
 
 # ------------------ CHART STYLING HELPERS ------------------ #
 def add_watermark(fig):
+    color = "rgba(255,255,255,0.15)" if dark_mode else "rgba(0,0,0,0.15)"
     fig.update_layout(annotations=[dict(
         text="EcoWatt AI", x=1.0, y=-0.15, xref="paper", yref="paper",
-        showarrow=False, font=dict(size=24, color="rgba(0,0,0,0.15)"),
+        showarrow=False, font=dict(size=24, color=color),
         xanchor="right", yanchor="top")])
     return fig
 
@@ -256,99 +247,92 @@ def style_fig(fig, dark_mode):
         paper_bgcolor=bg_color,
         font=dict(color=axis_color),
         xaxis=dict(color=axis_color, gridcolor=grid_color),
-        yaxis=dict(color=axis_color, gridcolor=grid_color)
+        yaxis=dict(color=axis_color, gridcolor=grid_color),
+        margin=dict(l=40, r=40, t=60, b=40)
     )
     return add_watermark(fig)
 
 # ------------------ DISPLAY ------------------ #
 if st.session_state.data_ready:
     df = st.session_state.df
-    left, right = st.columns([2, 1])
 
-    # LEFT: Charts
-    with left:
-        lat, lon = st.session_state.latlon
-        st.subheader(f"📈 Forecast for coordinates: {lat:.4f}, {lon:.4f}")
+    st.subheader(f"📈 Forecast for coordinates: {st.session_state.latlon[0]:.4f}, {st.session_state.latlon[1]:.4f}")
+    tabs = st.tabs(chart_options)
+    tab_index = {name: i for i, name in enumerate(chart_options)}
 
-        tabs = st.tabs(chart_options)
-        tab_index = {name: i for i, name in enumerate(chart_options)}
+    def get_line_color(name):
+        colors = {
+            "Solar": "#00ffb3",
+            "Wind": "#00d4ff",
+            "Temperature": "#ffaa00",
+            "Battery": "#00bfff",
+            "Cost": "#ff6f00"
+        }
+        return colors.get(name, "#00ffb3")
 
-        if "Solar" in chart_options:
-            with tabs[tab_index["Solar"]]:
-                fig = px.line(df, x="date", y="solar_mj_m2",
-                              title="☀️ Daily Solar (MJ/m²)",
-                              color_discrete_sequence=["#00ffb3"])
-                st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
+    for name in chart_options:
+        with tabs[tab_index[name]]:
+            y_cols = []
+            title = name
+            if name == "Solar":
+                y_cols = ["solar_mj_m2"]
+                title = "☀️ Daily Solar (MJ/m²)"
+            elif name == "Wind":
+                y_cols = ["wind_m_s_avg"]
+                title = "🌬️ Wind Speed (m/s)"
+            elif name == "Temperature":
+                y_cols = ["temp_max_c"]
+                title = "🌡️ Max Temperature (°C)"
+            elif name == "Battery":
+                y_cols = ["battery_kwh", "grid_kwh", "served_from_battery_kwh"]
+                title = "🔋 Battery & Grid Usage (kWh)"
+            elif name == "Cost":
+                y_cols = ["solar_cost", "wind_cost", "grid_cost", "total_cost"]
+                title = "💰 Energy Costs (₹)"
+            fig = px.line(df, x="date", y=y_cols, title=title,
+                          color_discrete_sequence=[get_line_color(name)]*len(y_cols))
+            st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
 
-        if "Wind" in chart_options:
-            with tabs[tab_index["Wind"]]:
-                fig = px.line(df, x="date", y="wind_m_s_avg",
-                              title="🌬️ Wind Speed (m/s)",
-                              color_discrete_sequence=["#00d4ff"])
-                st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
+    if "Map" in chart_options:
+        with tabs[tab_index["Map"]]:
+            lat, lon = st.session_state.latlon
+            if None not in (lat, lon):
+                st.map(pd.DataFrame({"lat": [lat], "lon": [lon]}))
+            else:
+                st.info("No valid coordinates to display on map.")
 
-        if "Temperature" in chart_options:
-            with tabs[tab_index["Temperature"]]:
-                fig = px.line(df, x="date", y="temp_max_c",
-                              title="🌡️ Max Temperature (°C)",
-                              color_discrete_sequence=["#ffaa00"])
-                st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
+    # Sidebar: Scores + Suggestions
+    st.sidebar.subheader("⚡ EcoWatt Scores")
+    for key, val in st.session_state.scores.items():
+        st.sidebar.markdown(
+            f'<div class="kpi-card"><div class="kpi-title">{key}</div>'
+            f'<div class="kpi-value">{val:.1f}/100</div></div>',
+            unsafe_allow_html=True
+        )
 
-        if "Battery" in chart_options:
-            with tabs[tab_index["Battery"]]:
-                fig = px.line(df, x="date",
-                              y=["battery_kwh", "grid_kwh", "served_from_battery_kwh"],
-                              title="🔋 Battery & Grid Usage (kWh)")
-                st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
+    st.sidebar.subheader("💡 Suggestions")
+    suggestions = []
+    if st.session_state.scores.get("Solar", 0) < 50:
+        suggestions.append("Increase solar panel area or use higher-efficiency modules (boost PR).")
+    if st.session_state.scores.get("Wind", 0) < 50:
+        suggestions.append("Consider higher capacity turbines or check siting for better wind resource.")
+    if st.session_state.scores.get("Battery", 0) < 50:
+        suggestions.append("Upgrade battery capacity or round-trip efficiency for improved storage.")
+    if st.session_state.scores.get("EcoWatt", 0) > 80:
+        suggestions.append("Excellent setup! You’re nearing optimal hybrid performance—keep fine-tuning.")
+    if st.session_state.scores.get("Self-sufficiency (%)", 0) < 60:
+        suggestions.append("Reduce grid dependence with demand shifting or incremental capacity increases.")
+    if len(suggestions) == 0:
+        suggestions.append("System looks balanced—monitor seasonal trends and maintenance for sustained gains.")
+    for s in suggestions:
+        st.sidebar.markdown(f'<div class="suggestion-card">{s}</div>', unsafe_allow_html=True)
 
-        if "Cost" in chart_options:
-            with tabs[tab_index["Cost"]]:
-                fig = px.line(df, x="date",
-                              y=["solar_cost", "wind_cost", "grid_cost", "total_cost"],
-                              title="💰 Energy Costs (₹)")
-                st.plotly_chart(style_fig(fig, dark_mode), use_container_width=True)
-
-        if "Map" in chart_options:
-            with tabs[tab_index["Map"]]:
-                if None not in (lat, lon):
-                    st.map(pd.DataFrame({"lat": [lat], "lon": [lon]}))
-                else:
-                    st.info("No valid coordinates to display on map.")
-
-        # Export section
-        with st.expander("Download results"):
-            csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button("Download CSV", csv, "ecowatt_results.csv", "text/csv")
-            st.write("Summary:")
-            st.json(st.session_state.summary)
-
-    # RIGHT: Scores + Suggestions
-    with right:
-        st.subheader("⚡ EcoWatt Scores")
-        for key, val in st.session_state.scores.items():
-            st.markdown(
-                f'<div class="kpi-card"><div class="kpi-title">{key}</div>'
-                f'<div class="kpi-value">{val:.1f}/100</div></div>',
-                unsafe_allow_html=True
-            )
-
-        st.subheader("💡 Suggestions")
-        suggestions = []
-        if st.session_state.scores.get("Solar", 0) < 50:
-            suggestions.append("Increase solar panel area or use higher-efficiency modules (boost PR).")
-        if st.session_state.scores.get("Wind", 0) < 50:
-            suggestions.append("Consider higher capacity turbines or check siting for better wind resource.")
-        if st.session_state.scores.get("Battery", 0) < 50:
-            suggestions.append("Upgrade battery capacity or round-trip efficiency for improved storage.")
-        if st.session_state.scores.get("EcoWatt", 0) > 80:
-            suggestions.append("Excellent setup! You’re nearing optimal hybrid performance—keep fine-tuning.")
-        if st.session_state.scores.get("Self-sufficiency (%)", 0) < 60:
-            suggestions.append("Reduce grid dependence with demand shifting or incremental capacity increases.")
-        if len(suggestions) == 0:
-            suggestions.append("System looks balanced—monitor seasonal trends and maintenance for sustained gains.")
-
-        for s in suggestions:
-            st.markdown(f'<div class="suggestion-card">{s}</div>', unsafe_allow_html=True)
+    # Export & summary
+    with st.expander("Download results"):
+        csv = df.to_csv(index=False).encode("utf-8")
+        st.download_button("Download CSV", csv, "ecowatt_results.csv", "text/csv")
+        st.write("Summary:")
+        st.json(st.session_state.summary)
 
 # ------------------ FOOTER & CREDITS ------------------ #
 st.markdown(f"""
