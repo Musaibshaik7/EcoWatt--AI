@@ -179,7 +179,7 @@ with st.sidebar:
         wind_om_inr_per_kwh = st.slider("Wind O&M cost (₹/kWh)", 0.0, 2.0, 0.5)
 
     st.markdown("---")
-    st.markdown("**Tip:** Click 'Analyze Renewable Potential' to generate charts. ✅")
+    #st.markdown("**Tip:** Click 'Analyze Renewable Potential' to generate charts. ✅")
     st.markdown("---")
 
 # ---------- Chart Selection ----------
