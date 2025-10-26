@@ -1,17 +1,31 @@
-# 🌍 EcoOptima – AI-Powered Renewable Energy Optimizer
+# ⚡ EcoWatt AI | Renewable Energy Optimizer
 
-EcoOptima helps users visualize and optimize renewable energy potential (solar & wind) for any location using public APIs.
+**EcoWatt AI** is an intelligent platform that forecasts solar, wind, battery, and energy costs for any location. It helps optimize renewable energy usage and battery storage for households.
 
-## ⚡ Features
-- Fetches real-time data from Open-Meteo API  
-- Displays interactive charts using Plotly  
-- AI-generated suggestions for renewable strategy  
-- Built with Streamlit for a clean, modern UI
+---
 
-## 🧠 Tech Stack
-Python, Streamlit, Plotly, Open-Meteo API
+## 🚀 Live App
 
-## 🚀 Run Locally
-```bash
+Try the live app here:  
+[Open in Streamlit](https://ecowatt--ai-kjnymdkzshzezncahd2hb9.streamlit.app/)
+
+---
+
+## 📦 Features
+
+- Forecast solar radiation, wind speed, and temperature.  
+- Battery and grid usage analysis.  
+- Energy cost estimation and EcoWatt scoring.  
+- Suggestions to improve self-sufficiency.  
+- Interactive charts: Solar, Wind, Temperature, Battery, Cost, Map.
+
+---
+
+## 💻 Installation
+
+1. Clone the repository:  
+   ```bash
+   git clone https://github.com/Musaibshaik7/EcoWatt--AI.git
+   cd EcoWatt--AI
 pip install -r requirements.txt
 streamlit run app.py
