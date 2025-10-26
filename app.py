@@ -378,7 +378,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ------------------ SESSION STATE ------------------ #
+# ------------------ SESSION STATE DEFAULTS ------------------ #
 if "theme" not in st.session_state:
     st.session_state.theme = "dark"
 if "df" not in st.session_state:
@@ -392,79 +392,17 @@ if "scores" not in st.session_state:
 if "summary" not in st.session_state:
     st.session_state.summary = {}
 
-# Persistent available tabs
 AVAILABLE_TABS = ["Solar", "Wind", "Temperature", "Battery", "Cost", "Map"]
 
-# ------------------ THEME ------------------ #
-theme = st.session_state.theme
-dark_mode = theme == "dark"
-bg_color = "#0b1a1f" if dark_mode else "#f6fbff"
-text_color = "#e6f6f1" if dark_mode else "#1b1b1b"
-subtext_color = "#bcded2" if dark_mode else "#385e6a"
-
-# ------------------ STYLES ------------------ #
-# note: keep the score card color same as you asked
-st.markdown(f"""
-<style>
-body {{ background-color: {bg_color}; }}
-.title {{
-    background: linear-gradient(90deg, #00ffb3, #00d4ff);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    font-size:50px;font-weight:900;text-align:center;margin-bottom:-10px;
-}}
-.subtitle {{ font-size:18px;color:{subtext_color};text-align:center;margin-bottom:20px; }}
-.kpi-card {{
-    padding:20px;border-radius:15px;font-weight:bold;font-size:16px;text-align:center;
-    margin-bottom:15px;background: linear-gradient(90deg, #00ffb3, #00d4ff);color:#000;
-    transition: transform 0.3s;
-}}
-.kpi-card:hover {{ transform: scale(1.05); }}
-.kpi-title {{ font-size:14px;color:{subtext_color};margin-bottom:8px; }}
-.kpi-value {{ font-size:24px;font-weight:700; }}
-.suggestion-card {{
-    padding:15px;border-radius:12px;margin-bottom:10px;
-    background-color:rgba(255,255,255,0.06);color:{text_color};
-    font-weight:bold;transition: transform 0.3s;
-}}
-.suggestion-card:hover {{ transform: scale(1.02); }}
-.footer {{
-    text-align:center;color:{subtext_color};margin-top:24px;font-size:14px;
-}}
-.footer a {{ color:{text_color}; text-decoration:none; font-weight:bold; }}
-.credits {{
-    margin-top:10px; font-size:13px; color:{subtext_color};
-}}
-.chart-title {{
-    text-align: left;
-    font-weight: 800;
-    font-size: 20px;
-    margin-bottom: 6px;
-}}
-.gradient-small {{
-    background: linear-gradient(90deg, #00ffb3, #00d4ff);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}}
-</style>
-""", unsafe_allow_html=True)
-
-# ------------------ HEADER ------------------ #
-st.markdown('<div class="title">⚡ EcoWatt AI</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Intelligent Renewable Energy Optimization Platform</div>', unsafe_allow_html=True)
-st.divider()
-
-# ------------------ SIDEBAR ------------------ #
+# ------------------ SIDEBAR (render first so theme toggle takes effect immediately) ------------------ #
 with st.sidebar:
     st.header("⚙️ Controls")
-    theme_choice = st.radio("Theme", ["Dark", "Light"], horizontal=True, index=0 if dark_mode else 1)
-    st.session_state.theme = "dark" if theme_choice == "Dark" else "light"
-    # recompute theme variables (keeps rest of the layout unchanged)
-    dark_mode = st.session_state.theme == "dark"
-    bg_color = "#0b1a1f" if dark_mode else "#f6fbff"
-    text_color = "#e6f6f1" if dark_mode else "#1b1b1b"
-    subtext_color = "#bcded2" if dark_mode else "#385e6a"
 
+    # theme toggle (immediately stored)
+    theme_choice = st.radio("Theme", ["Dark", "Light"], horizontal=True, index=0 if st.session_state.theme == "dark" else 1)
+    st.session_state.theme = "dark" if theme_choice == "Dark" else "light"
+
+    # city selector + coords
     city = st.selectbox("City:", ["Select city...", "Delhi", "Mumbai", "Bangalore", "Chennai", "Hyderabad", "Kolkata", "Custom"])
     coords = {
         "Delhi": (28.6139, 77.2090), "Mumbai": (19.0760, 72.8777), "Bangalore": (12.9716, 77.5946),
@@ -498,20 +436,60 @@ with st.sidebar:
     solar_om_inr_per_kwh = st.slider("Solar O&M cost (₹/kWh)", 0.0, 2.0, 0.3)
     wind_om_inr_per_kwh = st.slider("Wind O&M cost (₹/kWh)", 0.0, 2.0, 0.5)
 
-# ------------------ CHART SELECTOR (centered) ------------------ #
+# ------------------ Now compute theme variables and inject CSS (after sidebar) ------------------ #
+dark_mode = st.session_state.theme == "dark"
+bg_color = "#0b1a1f" if dark_mode else "#f6fbff"
+text_color = "#e6f6f1" if dark_mode else "#1b1b1b"
+subtext_color = "#bcded2" if dark_mode else "#385e6a"
+
+# CSS uses the current theme values, so it updates instantly when user toggles theme
+st.markdown(f"""
+<style>
+body {{ background-color: {bg_color}; }}
+.title {{
+    background: linear-gradient(90deg, #00ffb3, #00d4ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-size:50px;font-weight:900;text-align:center;margin-bottom:-10px;
+}}
+.subtitle {{ font-size:18px;color:{subtext_color};text-align:center;margin-bottom:20px; }}
+.kpi-card {{
+    padding:20px;border-radius:15px;font-weight:bold;font-size:16px;text-align:center;
+    margin-bottom:15px;background: linear-gradient(90deg, #00ffb3, #00d4ff);color:#000;
+    transition: transform 0.3s;
+}}
+.kpi-card:hover {{ transform: scale(1.05); }}
+.kpi-title {{ font-size:14px;color:{subtext_color};margin-bottom:8px; }}
+.kpi-value {{ font-size:24px;font-weight:700; }}
+.suggestion-card {{
+    padding:15px;border-radius:12px;margin-bottom:10px;
+    background-color:rgba(255,255,255,0.06);color:{text_color};
+    font-weight:bold;transition: transform 0.3s;
+}}
+.suggestion-card:hover {{ transform: scale(1.02); }}
+.footer {{
+    text-align:center;color:{subtext_color};margin-top:24px;font-size:14px;
+}}
+.footer a {{ color:{text_color}; text-decoration:none; font-weight:bold; }}
+.credits {{ margin-top:10px; font-size:13px; color:{subtext_color}; }}
+.chart-title {{ text-align:left; font-weight:800; font-size:20px; margin-bottom:6px; }}
+.gradient-small {{ background: linear-gradient(90deg, #00ffb3, #00d4ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }}
+</style>
+""", unsafe_allow_html=True)
+
+# ------------------ HEADER ------------------ #
+st.markdown('<div class="title">⚡ EcoWatt AI</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Intelligent Renewable Energy Optimization Platform</div>', unsafe_allow_html=True)
+st.divider()
+
+# ------------------ Centered Chart Selector ------------------ #
 selector_left, selector_mid, selector_right = st.columns([1, 2, 1])
 with selector_mid:
     st.subheader("📊 Chart selection")
-    st.multiselect(
-        "Select charts:",
-        AVAILABLE_TABS,
-        default=AVAILABLE_TABS,
-        key="chart_options"
-    )
-# ensure there's a safe list (empty handled later)
-chart_tabs = st.session_state.chart_options if "chart_options" in st.session_state else AVAILABLE_TABS
+    st.multiselect("Select charts:", AVAILABLE_TABS, default=AVAILABLE_TABS, key="chart_options")
+chart_tabs = st.session_state.get("chart_options", AVAILABLE_TABS)
 
-# ------------------ FETCH DATA ------------------ #
+# ------------------ Data fetcher ------------------ #
 @st.cache_data(show_spinner=False)
 def fetch_data(lat, lon):
     url = "https://api.open-meteo.com/v1/forecast"
@@ -524,7 +502,7 @@ def fetch_data(lat, lon):
     resp.raise_for_status()
     return resp.json()
 
-# ------------------ ANALYZE ------------------ #
+# ------------------ Analyze ------------------ #
 disabled_analyze = (st.session_state.latlon[0] is None or st.session_state.latlon[1] is None)
 analyze_clicked = st.button("Analyze Renewable Potential", disabled=disabled_analyze)
 if disabled_analyze:
@@ -545,9 +523,9 @@ if analyze_clicked and not disabled_analyze:
 
     df = pd.DataFrame({
         "date": pd.to_datetime(daily["time"]),
-        "solar_mj_m2": daily.get("shortwave_radiation_sum", [0]*len(daily["time"])),
-        "wind_m_s_max": daily.get("wind_speed_10m_max", [0]*len(daily["time"])),
-        "temp_max_c": daily.get("temperature_2m_max", [None]*len(daily["time"]))
+        "solar_mj_m2": daily.get("shortwave_radiation_sum", [0] * len(daily["time"])),
+        "wind_m_s_max": daily.get("wind_speed_10m_max", [0] * len(daily["time"])),
+        "temp_max_c": daily.get("temperature_2m_max", [None] * len(daily["time"]))
     })
     df = df.sort_values("date").tail(horizon_days).reset_index(drop=True)
 
@@ -557,8 +535,7 @@ if analyze_clicked and not disabled_analyze:
 
     avg_solar = df["solar_kwh_m2"].mean()
     avg_wind = df["wind_m_s_avg"].mean()
-
-    # Protect against division by zero
+    # protect against zero averages
     df["solar_scale"] = (df["solar_kwh_m2"] / avg_solar).fillna(1.0) if avg_solar > 0 else 1.0
     df["wind_scale"] = (df["wind_m_s_avg"] / avg_wind).fillna(1.0) if avg_wind > 0 else 1.0
 
@@ -568,23 +545,17 @@ if analyze_clicked and not disabled_analyze:
     df["total_gen_kwh"] = df["solar_gen_kwh"] + df["wind_gen_kwh"]
 
     battery = float(battery_capacity_kwh)
-    battery_state = []
-    grid_use = []
-    served_from_battery = []
+    battery_state, grid_use, served_from_battery = [], [], []
     for gen in df["total_gen_kwh"]:
         load = float(daily_load_kwh)
-        # charge with excess
         excess = max(gen - load, 0.0)
         battery = min(battery + excess * battery_round_trip_eff, float(battery_capacity_kwh))
-        # discharge for deficit
         remaining_load = max(load - gen, 0.0)
         discharge = min(battery, remaining_load)
         battery -= discharge
         served_from_battery.append(discharge)
-        # grid use for remaining deficit
         shortage = max(remaining_load - discharge, 0.0)
         grid_use.append(shortage)
-        # safeguard
         battery = max(battery, 0.0)
         battery_state.append(battery)
 
@@ -625,9 +596,8 @@ if analyze_clicked and not disabled_analyze:
         "Total cost (₹)": df["total_cost"].sum()
     }
 
-# ------------------ CHART HELPERS ------------------ #
+# ------------------ Chart helpers (theme-adaptive) ------------------ #
 def add_watermark(fig):
-    # watermark color adapts to theme
     color = "rgba(255,255,255,0.12)" if st.session_state.theme == "dark" else "rgba(0,0,0,0.12)"
     fig.update_layout(annotations=[dict(
         text="EcoWatt AI", x=1.0, y=-0.15, xref="paper", yref="paper",
@@ -636,7 +606,6 @@ def add_watermark(fig):
     return fig
 
 def style_fig(fig):
-    # proper theme-adaptive axis/title/legend styling
     if st.session_state.theme == "dark":
         axis_color = "#e6f6f1"
         grid_color = "rgba(255,255,255,0.08)"
@@ -670,18 +639,15 @@ def get_line_color(name):
     }
     return colors.get(name, "#00ffb3")
 
-# ------------------ DISPLAY ------------------ #
+# ------------------ Display (charts centered, scores on right) ------------------ #
 if st.session_state.data_ready:
     df = st.session_state.df
-
-    # Two-column layout: charts left (wide), scores right (narrow)
     left, right = st.columns([3, 1])
 
     with left:
         lat, lon = st.session_state.latlon
         st.subheader(f"📈 Forecast for coordinates: {lat:.4f}, {lon:.4f}")
 
-        # guard empty selection
         if not chart_tabs:
             st.warning("No charts selected. Please select at least one chart above.")
         else:
@@ -690,70 +656,70 @@ if st.session_state.data_ready:
 
             for name in chart_tabs:
                 with tabs[tab_index[name]]:
-                    # render a small gradient HTML title above the chart to mimic your main gradient style
-                    title_text = name
+                    # Gradient small title so it visually matches your header
                     if name == "Solar":
                         title_text = "☀️ Daily Solar (MJ/m²)"
-                    elif name == "Wind":
-                        title_text = "🌬️ Wind Speed (m/s)"
-                    elif name == "Temperature":
-                        title_text = "🌡️ Max Temperature (°C)"
-                    elif name == "Battery":
-                        title_text = "🔋 Battery & Grid Usage (kWh)"
-                    elif name == "Cost":
-                        title_text = "💰 Energy Costs (₹)"
-                    # small gradient title (left aligned)
-                    st.markdown(f'<div class="chart-title"><span class="gradient-small">{title_text}</span></div>', unsafe_allow_html=True)
-
-                    # choose y columns
-                    if name == "Solar":
                         y_cols = ["solar_mj_m2"]
                     elif name == "Wind":
+                        title_text = "🌬️ Wind Speed (m/s)"
                         y_cols = ["wind_m_s_avg"]
                     elif name == "Temperature":
+                        title_text = "🌡️ Max Temperature (°C)"
                         y_cols = ["temp_max_c"]
                     elif name == "Battery":
-                        # battery and flow lines should have different colors for readability
-                        fig = px.line(df, x="date", y=["battery_kwh", "grid_kwh", "served_from_battery_kwh"],
-                                      labels={"value": "kWh", "date": "Date"},
-                                      title="")
-                        # assign explicit colors for the three lines
+                        title_text = "🔋 Battery & Grid Usage (kWh)"
+                        y_cols = ["battery_kwh", "grid_kwh", "served_from_battery_kwh"]
+                    elif name == "Cost":
+                        title_text = "💰 Energy Costs (₹)"
+                        y_cols = ["solar_cost", "wind_cost", "grid_cost", "total_cost"]
+                    else:  # Map
+                        title_text = "🗺️ Map"
+                        y_cols = []
+
+                    st.markdown(f'<div class="chart-title"><span class="gradient-small">{title_text}</span></div>', unsafe_allow_html=True)
+
+                    # Multi-series special cases with explicit colors
+                    if name == "Battery":
+                        fig = px.line(df, x="date", y=y_cols, labels={"value": "kWh", "date": "Date"})
+                        # assign explicit colors for battery chart lines
+                        # update_traces uses trace order/names — set by column names
                         fig.update_traces(selector=dict(name="battery_kwh"), line=dict(color="#00ffb3"))
                         fig.update_traces(selector=dict(name="grid_kwh"), line=dict(color="#ff6b6b"))
                         fig.update_traces(selector=dict(name="served_from_battery_kwh"), line=dict(color="#ffd166"))
                         st.plotly_chart(style_fig(fig), use_container_width=True)
                         continue
-                    elif name == "Cost":
-                        # multi-line cost with distinct colors
-                        fig = px.line(df, x="date", y=["solar_cost", "wind_cost", "grid_cost", "total_cost"],
-                                      labels={"value": "₹", "date": "Date"},
-                                      title="")
-                        # set distinct colors
+
+                    if name == "Cost":
+                        fig = px.line(df, x="date", y=y_cols, labels={"value": "₹", "date": "Date"})
                         fig.update_traces(selector=dict(name="solar_cost"), line=dict(color="#00ffb3"))
                         fig.update_traces(selector=dict(name="wind_cost"), line=dict(color="#00d4ff"))
                         fig.update_traces(selector=dict(name="grid_cost"), line=dict(color="#ff6b6b"))
                         fig.update_traces(selector=dict(name="total_cost"), line=dict(color="#ffd166"))
                         st.plotly_chart(style_fig(fig), use_container_width=True)
                         continue
-                    else:
-                        y_cols = []
 
-                    # default simple single-line charts
+                    # Map handled below
+                    if name == "Map":
+                        # Map tab handled after loop
+                        st.info("Map tab available — click it to view location.")
+                        continue
+
+                    # Default single-line chart
                     if y_cols:
                         fig = px.line(df, x="date", y=y_cols, title="")
-                        # set line color so it stays visible on both themes
                         fig.update_traces(line=dict(color=get_line_color(name)))
                         st.plotly_chart(style_fig(fig), use_container_width=True)
 
-            # Map tab (special)
+            # handle Map tab
             if "Map" in chart_tabs:
                 with tabs[tab_index["Map"]]:
+                    lat, lon = st.session_state.latlon
                     if None not in (lat, lon):
                         st.map(pd.DataFrame({"lat": [lat], "lon": [lon]}))
                     else:
                         st.info("No valid coordinates to display on map.")
 
-        # Export & summary
+        # export & summary
         with st.expander("Download results"):
             csv = df.to_csv(index=False).encode("utf-8")
             st.download_button("Download CSV", csv, "ecowatt_results.csv", "text/csv")
@@ -762,8 +728,8 @@ if st.session_state.data_ready:
 
     with right:
         st.subheader("⚡ EcoWatt Scores")
-        # KEEP score card color the same as you requested
         for key, val in st.session_state.scores.items():
+            # KEEP score card color the same as requested
             st.markdown(
                 f'<div class="kpi-card"><div class="kpi-title">{key}</div>'
                 f'<div class="kpi-value">{val:.1f}/100</div></div>',
@@ -784,11 +750,10 @@ if st.session_state.data_ready:
             suggestions.append("Reduce grid dependence with demand shifting or incremental capacity increases.")
         if len(suggestions) == 0:
             suggestions.append("System looks balanced—monitor seasonal trends and maintenance for sustained gains.")
-
         for s in suggestions:
             st.markdown(f'<div class="suggestion-card">{s}</div>', unsafe_allow_html=True)
 
-# ------------------ FOOTER & CREDITS ------------------ #
+# ------------------ Footer & credits ------------------ #
 st.markdown(f"""
 <div class="footer">
 Made with ❤️ by <b>Musaib Shaik</b> |
