@@ -1,4 +1,3 @@
-
 import streamlit as st
 import requests
 import pandas as pd
@@ -26,9 +25,9 @@ if "scores" not in st.session_state:
     st.session_state.scores = {}
 if "summary" not in st.session_state:
     st.session_state.summary = {}
+
+# Persistent available tabs
 AVAILABLE_TABS = ["Solar", "Wind", "Temperature", "Battery", "Cost", "Map"]
-if "chart_options" not in st.session_state:
-    st.session_state.chart_options = AVAILABLE_TABS.copy()
 
 # ------------------ THEME ------------------ #
 theme = st.session_state.theme
@@ -119,25 +118,19 @@ with st.sidebar:
     tariff_inr_per_kwh = st.slider("Electricity tariff (₹/kWh)", 4.0, 15.0, 8.0)
     solar_om_inr_per_kwh = st.slider("Solar O&M cost (₹/kWh)", 0.0, 2.0, 0.3)
     wind_om_inr_per_kwh = st.slider("Wind O&M cost (₹/kWh)", 0.0, 2.0, 0.5)
- # ------------------ CHART SELECTOR (always visible) ------------------ #
+
+# ------------------ CHART SELECTOR (always visible, stable) ------------------ #
 selector_left, selector_mid, selector_right = st.columns([1, 2, 1])
 with selector_mid:
     st.subheader("📊 Chart selection")
-    # Use key to persist selection, set default only once
-    if "chart_options" not in st.session_state:
-        st.session_state.chart_options = AVAILABLE_TABS.copy()
-
-    selected = st.multiselect(
+    st.multiselect(
         "Select charts:",
         AVAILABLE_TABS,
-        default=st.session_state.chart_options,  # only used on first run
-        key="chart_options"  # Streamlit manages state now
+        default=AVAILABLE_TABS,  # initial default
+        key="chart_options"      # Streamlit manages state
     )
-
-    # Guard against empty selection
-    if not st.session_state.chart_options:
-        st.info("Please select at least one chart. Defaulting to Solar.")
-        st.session_state.chart_options = ["Solar"]
+# Safe fallback for rendering (avoid manual overwrite of session_state)
+chart_tabs = st.session_state.chart_options if st.session_state.chart_options else []
 
 # ------------------ FETCH DATA ------------------ #
 @st.cache_data(show_spinner=False)
@@ -199,17 +192,18 @@ if analyze_clicked and not disabled_analyze:
     served_from_battery = []
     for gen in df["total_gen_kwh"]:
         load = float(daily_load_kwh)
+        # charge with excess
         excess = max(gen - load, 0.0)
         battery = min(battery + excess * battery_round_trip_eff, float(battery_capacity_kwh))
-
+        # discharge for deficit
         remaining_load = max(load - gen, 0.0)
         discharge = min(battery, remaining_load)
         battery -= discharge
         served_from_battery.append(discharge)
-
+        # grid use for remaining deficit
         shortage = max(remaining_load - discharge, 0.0)
         grid_use.append(shortage)
-
+        # safeguard
         battery = max(battery, 0.0)
         battery_state.append(battery)
 
@@ -272,6 +266,16 @@ def style_fig(fig):
     )
     return add_watermark(fig)
 
+def get_line_color(name):
+    colors = {
+        "Solar": "#00ffb3",
+        "Wind": "#00d4ff",
+        "Temperature": "#ffaa00",
+        "Battery": "#00bfff",
+        "Cost": "#ff6f00"
+    }
+    return colors.get(name, "#00ffb3")
+
 # ------------------ DISPLAY ------------------ #
 if st.session_state.data_ready:
     df = st.session_state.df
@@ -280,26 +284,17 @@ if st.session_state.data_ready:
     left, right = st.columns([3, 1])
 
     with left:
-        st.subheader(f"📈 Forecast for coordinates: {st.session_state.latlon[0]:.4f}, {st.session_state.latlon[1]:.4f}")
+        lat, lon = st.session_state.latlon
+        st.subheader(f"📈 Forecast for coordinates: {lat:.4f}, {lon:.4f}")
 
-        chart_options = st.session_state.chart_options
-        if not chart_options:
+        # Guard empty selection
+        if not chart_tabs:
             st.warning("No charts selected. Please select at least one chart above.")
         else:
-            tabs = st.tabs(chart_options)
-            tab_index = {name: i for i, name in enumerate(chart_options)}
+            tabs = st.tabs(chart_tabs)
+            tab_index = {name: i for i, name in enumerate(chart_tabs)}
 
-            def get_line_color(name):
-                colors = {
-                    "Solar": "#00ffb3",
-                    "Wind": "#00d4ff",
-                    "Temperature": "#ffaa00",
-                    "Battery": "#00bfff",
-                    "Cost": "#ff6f00"
-                }
-                return colors.get(name, "#00ffb3")
-
-            for name in chart_options:
+            for name in chart_tabs:
                 with tabs[tab_index[name]]:
                     y_cols, title = [], name
                     if name == "Solar":
@@ -312,13 +307,13 @@ if st.session_state.data_ready:
                         y_cols = ["battery_kwh", "grid_kwh", "served_from_battery_kwh"]; title = "🔋 Battery & Grid Usage (kWh)"
                     elif name == "Cost":
                         y_cols = ["solar_cost", "wind_cost", "grid_cost", "total_cost"]; title = "💰 Energy Costs (₹)"
+
                     fig = px.line(df, x="date", y=y_cols, title=title,
                                   color_discrete_sequence=[get_line_color(name)]*len(y_cols))
                     st.plotly_chart(style_fig(fig), use_container_width=True)
 
-            if "Map" in chart_options:
+            if "Map" in chart_tabs:
                 with tabs[tab_index["Map"]]:
-                    lat, lon = st.session_state.latlon
                     if None not in (lat, lon):
                         st.map(pd.DataFrame({"lat": [lat], "lon": [lon]}))
                     else:
